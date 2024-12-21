@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Printful Mockup Generator</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body>
+  <div class="container mx-auto p-4">
+    <h1 class="text-2xl font-bold mb-4">Generate Printful Mockup</h1>
+    <form id="mockupForm" class="space-y-4">
+      <div>
+        <label for="productId" class="block text-sm font-medium text-gray-700">Product ID:</label>
+        <input type="number" id="productId" name="productId" required class="mt-1 block w-full border border-gray-300 rounded-md p-2">
+      </div>
+      <div>
+        <label for="imageUrl" class="block text-sm font-medium text-gray-700">Image URL:</label>
+        <input type="url" id="imageUrl" name="imageUrl" required class="mt-1 block w-full border border-gray-300 rounded-md p-2">
+      </div>
+      <button type="submit" class="bg-blue-500 text-white px-4 py-2 rounded-md">Generate Mockup</button>
+    </form>
+    <div id="loading" class="mt-4 text-blue-500 hidden">Processing...</div>
+    <div id="mockups" class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4"></div>
+  </div>
+
+  <script>
+    const mockupForm = document.getElementById('mockupForm');
+    const loading = document.getElementById('loading');
+    const mockupsContainer = document.getElementById('mockups');
+
+    mockupForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      mockupsContainer.innerHTML = '';
+      const imageUrl = document.getElementById('imageUrl').value;
+      const productId = document.getElementById('productId').value;
+
+      // Show loading indicator
+      loading.classList.remove('hidden');
+
+      try {
+        // Step 1: Create mockup task
+        const createResponse = await fetch('/create-task', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ imageUrl, productId }),
+        });
+
+        const createData = await createResponse.json();
+
+        if (createData.code !== 200) {
+          throw new Error(createData.error || 'Failed to create task');
+        }
+
+        const taskKey = createData.result.task_key;
+
+        // Step 2: Poll for task status
+        let taskStatus = 'pending';
+        let taskData = null;
+
+        while (taskStatus === 'pending') {
+          await new Promise((resolve) => setTimeout(resolve, 2000)); // Wait for 2 seconds
+
+          const statusResponse = await fetch(`/api/get-task?task_key=${taskKey}`);
+          const statusData = await statusResponse.json();
+
+          if (statusData.code !== 200) {
+            throw new Error(statusData.error || 'Failed to get task status');
+          }
+
+          taskStatus = statusData.result.status;
+          taskData = statusData.result;
+        }
+
+        if (taskStatus === 'completed') {
+          displayMockups(taskData.mockups);
+        } else {
+          throw new Error('Task failed');
+        }
+      } catch (error) {
+        alert(error.message);
+      } finally {
+        // Hide loading indicator
+        loading.classList.add('hidden');
+      }
+    });
+
+    function displayMockups(mockups) {
+      mockupsContainer.innerHTML = '';
+
+      mockups.forEach((mockup) => {
+        const img = document.createElement('img');
+        img.src = mockup.mockup_url;
+        img.alt = `${mockup.placement} mockup`;
+        img.classList.add('w-full', 'rounded-md', 'shadow-md');
+
+        const caption = document.createElement('p');
+        caption.textContent = `${mockup.placement.charAt(0).toUpperCase() + mockup.placement.slice(1)} Placement`;
+        caption.classList.add('text-center', 'mt-2', 'text-gray-700');
+
+        const container = document.createElement('div');
+        container.classList.add('flex', 'flex-col', 'items-center');
+        container.appendChild(img);
+        container.appendChild(caption);
+
+        mockupsContainer.appendChild(container);
+      });
+    }
+  </script>
+</body>
+</html>
